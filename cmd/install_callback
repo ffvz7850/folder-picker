@@ -1,0 +1,38 @@
+#!/bin/bash
+
+### 安装文件应用后执行：准备运行目录与默认配置
+
+APPNAME="folder-picker"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/${APPNAME}/var}"
+PKGETC="${TRIM_PKGETC:-/var/apps/${APPNAME}/etc}"
+LOG_FILE="${PKGVAR}/info.log"
+
+mkdir -p "${PKGVAR}" "${PKGETC}" 2> /dev/null
+chmod 755 "${PKGVAR}" "${PKGETC}" 2> /dev/null
+
+# 只在首次安装时写入默认配置，升级时保留用户已有配置
+if [ ! -f "${PKGETC}/settings.conf" ]; then
+    cat > "${PKGETC}/settings.conf" << 'EOF'
+# 文件夹挑选器配置（修改后到 应用中心 重启应用生效）
+# 调试用 TCP 端口；统一网关模式下不对外使用
+PORT=8484
+# 调试监听地址：127.0.0.1 仅本机；改成 0.0.0.0 可局域网直连（无网关鉴权，谨慎）
+BIND_HOST=127.0.0.1
+# 额外允许浏览的根目录，冒号分隔，例如 /mnt:/media
+EXTRA_ROOTS=
+# TCP 直连时需要携带的令牌，留空表示不校验（仅建议在 BIND_HOST=127.0.0.1 时留空）
+AUTH_TOKEN=
+# 聚合视图取哪一层作为"用户目录"，逗号分隔按顺序取第一个存在的。
+# 飞牛的用户数据在 /vol{n}/1000，一般不用改；留空即用默认值 1000
+AGG_SUBDIRS=1000
+# 打开界面时预填的来源目录，留空 = 默认聚合各存储空间（推荐）
+DEFAULT_SOURCE=
+# 打开界面时预填的目标目录，例如 /vol1/1000/media/剧集
+DEFAULT_DEST=
+EOF
+    chmod 644 "${PKGETC}/settings.conf" 2> /dev/null
+fi
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - install_callback: dirs ready" >> "${LOG_FILE}"
+
+exit 0

@@ -1,0 +1,25 @@
+[
+  {
+    "stepTitle": "文件夹挑选器",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "装好后在桌面点图标即可打开，界面会展示你选择的目录下每一层子文件夹。默认不显示文件，可以手动勾选需要的文件夹，也可以按层一键全选。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_default_dest",
+        "label": "默认目标目录（可留空）",
+        "initValue": "",
+        "helpText": "勾选完成后要搬去的目录，例如 /vol1/1000/media。留空也没关系，界面上随时可以改。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_default_source",
+        "label": "默认来源目录（可留空）",
+        "initValue": "",
+        "helpText": "一般填你手动解压压缩包的目录，例如 /vol1/1000/Downloads。界面打开时会直接定位到这里。"
+      }
+    ]
+  }
+]

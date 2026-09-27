@@ -1,0 +1,16 @@
+#!/bin/bash
+
+### 卸载清理后执行：清掉 socket 与临时文件；用户数据按向导选择处理
+
+APPNAME="folder-picker"
+PKGVAR="${TRIM_PKGVAR:-/var/apps/${APPNAME}/var}"
+APPDEST="${TRIM_APPDEST:-/var/apps/${APPNAME}/target}"
+
+rm -f "${APPDEST}/app.sock" 2> /dev/null
+
+# wizard/uninstall 中选择"删除数据"时清除运行数据
+if [ "${wizard_data_action}" = "delete" ]; then
+    rm -rf "${PKGVAR}" 2> /dev/null
+fi
+
+exit 0

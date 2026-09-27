@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件夹挑选器</title>
+<style>
+  /* ------------------------------------------------------------------
+     配色取自飞牛官网的蓝色体系（#0F5FFF 主蓝 / #4593FF 亮蓝 /
+     #EDF5FF · #F6FAFF 浅蓝底），配合大圆角白卡片，贴近 fnOS 桌面观感。
+     布局：左侧一栏「工作台」（按层勾选 + 已勾选 + 操作 合并成一块），
+     右侧目录树自己滚动。文件夹再多，页面也只是一屏，不会滚成一团。
+     ------------------------------------------------------------------ */
+  :root{
+    --fn-blue:#0f5fff; --fn-blue-2:#4593ff; --fn-blue-deep:#0a49cc;
+    --fn-soft:#edf5ff; --fn-soft-2:#f6faff; --fn-soft-3:#e4effe;
+    --fn-line:#e2ecfa; --fn-line-2:#eff4fc;
+    --fn-text:#1f2024; --fn-text-2:#5a6272; --fn-muted:#8b93a5;
+    --fn-bg:#f2f6fd;
+    --fn-ok:#12a150; --fn-warn:#d98400; --fn-danger:#f24b4e;
+    --fn-r:14px; --fn-r-sm:9px;
+    --fn-shadow:0 1px 2px rgba(16,42,88,.04), 0 10px 30px -20px rgba(16,42,88,.35);
+    --fn-shadow-lg:0 24px 60px -24px rgba(11,38,90,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;color:var(--fn-text);background:var(--fn-bg);
+       font:13.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+       -webkit-font-smoothing:antialiased;background-image:
+         radial-gradient(1100px 520px at 8% -12%,#e7f0ff 0%,rgba(231,240,255,0) 62%),
+         radial-gradient(900px 460px at 96% 4%,#eef3ff 0%,rgba(238,243,255,0) 58%);}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#d3e2f7;border:3px solid transparent;
+      background-clip:content-box;border-radius:9px}
+  ::-webkit-scrollbar-thumb:hover{background:#b9d2f5;background-clip:content-box}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  button{font:inherit;font-size:12.5px;color:var(--fn-text-2);background:#fff;
+         border:1px solid var(--fn-line);border-radius:var(--fn-r-sm);padding:4px 10px;
+         cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+  button:hover{border-color:#c6dbff;background:var(--fn-soft-2);color:var(--fn-blue)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  button.primary{background:linear-gradient(135deg,var(--fn-blue-2),var(--fn-blue));border-color:transparent;
+                 color:#fff;font-weight:500;box-shadow:0 8px 18px -10px rgba(15,95,255,.95)}
+  button.primary:hover{background:linear-gradient(135deg,#2f86ff,var(--fn-blue-deep));color:#fff;
+                 box-shadow:0 10px 22px -10px rgba(15,95,255,1)}
+  button.ghost{background:transparent;border-color:transparent;color:var(--fn-muted)}
+  button.ghost:hover{background:var(--fn-soft);color:var(--fn-blue)}
+  /* 小一号：工具栏、按层勾选这类地方用它，把窗口压紧 */
+  button.mini{padding:1px 8px;font-size:11.5px;border-radius:6px;line-height:1.7}
+
+  input[type=text]{font:inherit;font-size:12.5px;border:1px solid var(--fn-line);border-radius:var(--fn-r-sm);
+                   padding:4px 9px;background:#fff;color:var(--fn-text);min-width:0;transition:border-color .15s,box-shadow .15s}
+  input[type=text]::placeholder{color:#b3bccd}
+  input[type=text]:focus{outline:0;border-color:var(--fn-blue-2);box-shadow:0 0 0 3px rgba(69,147,255,.16)}
+  select{font:inherit;font-size:12.5px;color:var(--fn-text);background:#fff;border:1px solid var(--fn-line);
+         border-radius:var(--fn-r-sm);padding:4px 6px}
+  select:focus{outline:0;border-color:var(--fn-blue-2);box-shadow:0 0 0 3px rgba(69,147,255,.16)}
+  input[type=checkbox],input[type=radio]{accent-color:var(--fn-blue);cursor:pointer;margin:0 4px 0 0;vertical-align:-1px}
+  label.chk{display:inline-flex;align-items:center;color:var(--fn-text-2);font-size:12.5px;
+            cursor:pointer;user-select:none;white-space:nowrap}
+
+  .wrap{max-width:1680px;margin:0 auto;padding:11px 14px 14px}
+  /* 顶上那排「应用图标 + 文件夹挑选器 + 副标题」已经去掉：飞牛桌面小窗的标题栏
+     上本来就写着应用名，界面里再来一遍纯属白占一行高度。下面直接从工具条开始。 */
+  .foot{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:0 3px}
+  .foot .hint{margin-right:auto}
+  .badges{display:flex;gap:6px;align-items:center}
+  .badge{font-size:11.5px;color:var(--fn-text-2);border:1px solid var(--fn-line);
+         background:#fff;border-radius:999px;padding:2px 9px}
+  .badge.on{color:var(--fn-blue);border-color:#d3e5ff;background:var(--fn-soft)}
+
+  .card{background:#fff;border:1px solid var(--fn-line);border-radius:var(--fn-r);
+        padding:11px 13px;margin-bottom:11px;box-shadow:var(--fn-shadow)}
+
+  /* ---------- 顶部工具条：来源 + 筛选（可折叠，默认只占一行） ---------- */
+  .tools{padding:9px 11px}
+  .rows{display:flex;flex-direction:column;gap:7px}
+  .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .row .grow{flex:1 1 260px}
+  .row input.grow{width:100%}
+  .row .lbl{color:var(--fn-text-2);font-size:12.5px;flex:none}
+  .hint{color:var(--fn-muted);font-size:11.5px}
+  .hint.warn{color:var(--fn-warn)}
+  .err{color:var(--fn-danger)}
+  .ok{color:var(--fn-ok)}
+  .filters{display:none}
+  .filters.on{display:flex}
+  .tools #advBtn.on{color:var(--fn-blue);background:var(--fn-soft);border-color:#d3e5ff}
+
+  /* ---------- 主区：左工作台 / 右目录树 ---------- */
+  .main{display:grid;grid-template-columns:minmax(0,396px) minmax(0,1fr);gap:11px;align-items:start}
+  @media(max-width:1259px){.main{grid-template-columns:minmax(0,1fr)}}
+
+  .work{padding:0 0 10px;position:sticky;top:10px;
+        max-height:min(calc(100vh - 20px),1400px);overflow:auto}
+  @media(max-width:1259px){.work{position:static;max-height:none}}
+  .work-hd{position:sticky;top:0;z-index:2;background:#fff;border-bottom:1px solid var(--fn-line-2);
+           padding:10px 12px 8px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;
+           border-radius:var(--fn-r) var(--fn-r) 0 0}
+  .work-hd .hint{font-weight:400;margin-left:auto}
+  .sec{padding:9px 12px 0}
+  .sec+.sec{margin-top:9px;border-top:1px solid var(--fn-line-2);padding-top:9px}
+  .sec-hd{display:flex;justify-content:space-between;align-items:center;gap:6px;
+          margin-bottom:6px;font-size:12.5px;font-weight:600;color:var(--fn-text)}
+  .sec-hd .t{display:inline-flex;align-items:center;gap:6px}
+  .sec-hd .t i,.card h2 .t i{width:3px;height:12px;border-radius:2px;
+          background:linear-gradient(var(--fn-blue-2),var(--fn-blue));display:inline-block;flex:none}
+  .sec-hd .hint{font-weight:400}
+
+  .card h2{font-size:12.5px;margin:0 0 8px;font-weight:600;color:var(--fn-text);
+           display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .card h2 .t{display:inline-flex;align-items:center;gap:6px}
+  .card h2 .hint{font-weight:400}
+
+  /* 按层一键勾选：一行一层，对齐成列表，层数再多也是整齐一列，不会散成一堆小方块 */
+  .levels{display:flex;flex-direction:column;gap:2px;max-height:212px;overflow:auto;
+          border:1px solid var(--fn-line-2);border-radius:10px;padding:4px;background:var(--fn-soft-2)}
+  .lv{display:flex;align-items:center;gap:6px;padding:1px 3px 1px 7px;border-radius:7px;
+      font-size:12px;transition:background .12s}
+  .lv:hover{background:#fff}
+  .lv b{font-weight:600;color:var(--fn-text);min-width:48px;flex:none}
+  .lv .n{font-style:normal;color:var(--fn-muted);font-size:11px;flex:1 1 auto;
+         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lv .lvb{display:flex;gap:4px;flex:none}
+  .lv.all{margin-top:3px;border-top:1px dashed var(--fn-line);padding-top:4px}
+  .lv.all b{color:var(--fn-blue)}
+
+  #selList{max-height:132px;overflow:auto;border:1px solid var(--fn-line-2);border-radius:10px;
+           padding:5px 6px;font-size:11.5px;background:var(--fn-soft-2)}
+  #selList div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 4px;border-radius:5px}
+  #selList div[data-p]{cursor:pointer}
+  #selList div[data-p]:hover{background:#fff;color:var(--fn-blue)}
+  .stat{display:flex;gap:12px;flex-wrap:wrap;color:var(--fn-muted);font-size:11.5px;margin-bottom:5px;
+        align-items:baseline}
+  .stat b{color:var(--fn-text);font-size:14px;font-weight:600}
+
+  .bar{height:7px;background:var(--fn-soft-3);border-radius:999px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;border-radius:999px;
+         background:linear-gradient(90deg,var(--fn-blue-2),var(--fn-blue));transition:width .25s}
+
+  /* ---------- 目录树 ---------- */
+  .treecard{padding:11px 13px}
+  #tree{overflow:auto;border:1px solid var(--fn-line-2);border-radius:10px;padding:6px;
+        background:linear-gradient(#fdfeff,#fbfdff);max-height:min(74vh,1200px)}
+  @media(min-width:1260px){#tree{max-height:max(340px,calc(100vh - 164px))}}
+  .node{display:flex;align-items:center;gap:5px;padding:2px 6px;border-radius:7px;
+        transition:background .12s}
+  .node:hover{background:var(--fn-soft-2)}
+  .node .tw{width:16px;text-align:center;color:#9fb0c8;cursor:pointer;flex:none;
+            user-select:none;font-size:10.5px}
+  .node .tw.leaf{visibility:hidden}
+  .node input[type=checkbox]{flex:none;cursor:pointer}
+  .node .nm{cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node .meta{color:var(--fn-muted);font-size:11.5px;margin-left:auto;padding-left:10px;flex:none}
+  .node.sel{background:var(--fn-soft);box-shadow:inset 3px 0 0 var(--fn-blue)}
+  .node.sel .nm{color:var(--fn-blue);font-weight:600}
+  .node.file{cursor:default}
+  .node.file .nm{font-style:italic}
+  .node.implied .nm{color:var(--fn-muted)}
+  .node.root .nm{font-weight:600}
+  /* 从「已勾选」清单点过来时闪一下，长目录里也能一眼找到 */
+  .node.flash{background:#fff6dc;box-shadow:inset 3px 0 0 var(--fn-warn);
+              animation:fpflash 1.5s ease-out}
+  @keyframes fpflash{0%{background:#ffe9b0}100%{background:#fff6dc}}
+  .children{margin-left:14px;border-left:1px dashed #e2ebf8;padding-left:5px}
+  .pill{font-size:10.5px;border-radius:999px;padding:0 6px;border:1px solid var(--fn-line);
+        color:var(--fn-muted);background:var(--fn-soft-2);flex:none;line-height:1.7}
+  .pill.warn{color:var(--fn-warn);border-color:#f6e3c2;background:#fff8ec}
+  .pill.vol{color:var(--fn-blue);border-color:#d6e6ff;background:var(--fn-soft)}
+
+  .modal{position:fixed;inset:0;background:rgba(18,30,58,.42);backdrop-filter:blur(2px);
+         display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal.on{display:flex}
+  .modal .box{background:#fff;border-radius:16px;width:min(780px,100%);box-shadow:var(--fn-shadow-lg);
+              max-height:88vh;display:flex;flex-direction:column;overflow:hidden;
+              border:1px solid var(--fn-line)}
+  .modal .hd{padding:12px 15px;border-bottom:1px solid var(--fn-line-2);
+             display:flex;justify-content:space-between;align-items:center;font-size:13.5px;font-weight:600}
+  .modal .bd{padding:12px 15px;overflow:auto}
+  .modal .ft{padding:11px 15px;border-top:1px solid var(--fn-line-2);display:flex;
+             justify-content:flex-end;gap:7px;align-items:center;background:var(--fn-soft-2)}
+  .crumb{display:flex;gap:4px;flex-wrap:wrap;font-size:12px;margin-bottom:8px;color:var(--fn-muted);
+         align-items:center}
+  .crumb a{color:var(--fn-blue);text-decoration:none;cursor:pointer;padding:1px 6px;border-radius:6px}
+  .crumb a:hover{background:var(--fn-soft)}
+  .crumb .sep{color:#c6d0e0}
+
+  #pkList .node{border:1px solid transparent;border-radius:8px;padding:4px 8px}
+  #pkList .node:hover{border-color:var(--fn-line);background:var(--fn-soft-2)}
+
+  /* 目录选择器里的「最近用过」：以前填过的来源目录，一点就回去了 */
+  #pkRecent{display:none;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:8px}
+  #pkRecent .chip{font-size:11.5px;color:var(--fn-blue);background:#fff;
+        border:1px solid var(--fn-line);border-radius:999px;padding:1px 9px;cursor:pointer;
+        max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #pkRecent .chip:hover{background:var(--fn-soft);border-color:#d3e5ff}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(6px);
+         background:rgba(31,32,36,.94);color:#fff;padding:9px 16px;border-radius:11px;font-size:12.5px;
+         opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:60;max-width:80vw;
+         box-shadow:0 16px 40px -18px rgba(0,0,0,.6)}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:rgba(180,38,42,.95)}
+
+  @media(max-width:820px){
+    .wrap{padding:10px 10px 22px}
+    .node .meta{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 顶部工具条：平时只有一行，筛选条件按需展开 -->
+  <section class="card tools">
+    <div class="row">
+      <span class="lbl">来源目录</span>
+      <input type="text" id="rootPath" class="grow" list="rootHist"
+             placeholder="留空即聚合各存储空间下的文件夹；也可填 /vol1/1000/Downloads">
+      <datalist id="rootHist"></datalist>
+      <button class="mini" onclick="openPicker('root')">浏览…</button>
+      <button class="primary" onclick="loadTree()">读取结构</button>
+      <button class="ghost mini" id="advBtn" onclick="toggleAdv()">筛选条件 ▾</button>
+    </div>
+    <div class="row filters" id="advRow">
+      <span class="lbl">筛选</span>
+      <input type="text" id="filterText" placeholder="文件夹名包含（多个词空格分隔，需全部包含）"
+             class="grow" style="flex:1 1 220px">
+      <input type="text" id="excludeText" placeholder="排除的名字，如 @eaDir,Sample,#recycle"
+             style="flex:1 1 200px">
+      <label class="chk"><input type="checkbox" id="showFiles"> 显示文件</label>
+      <label class="chk"><input type="checkbox" id="showEmpty"> 显示空文件夹</label>
+      <label class="chk"><input type="checkbox" id="hideHidden" checked> 隐藏点开头</label>
+      <span class="lbl">展开层数</span>
+      <select id="depth">
+        <option>1</option><option>2</option><option selected>3</option>
+        <option>4</option><option>5</option><option>6</option>
+      </select>
+      <button class="mini" onclick="loadTree()">应用筛选</button>
+    </div>
+  </section>
+
+  <!-- 左：工作台（按层勾选 + 已勾选 + 操作 合并成一块）；右：目录树 -->
+  <div class="main">
+    <aside class="card work">
+      <div class="work-hd"><span class="t"><i></i>工作台</span>
+        <span class="hint">按层勾选 → 核对 → 搬运</span></div>
+
+      <div class="sec">
+        <div class="sec-hd"><span class="t"><i></i>按层一键勾选（第 N 层子文件夹）</span>
+          <span><button class="mini ghost" onclick="expandAll(true)">全部展开</button>
+                <button class="mini ghost" onclick="expandAll(false)">全部收起</button></span></div>
+        <div class="levels" id="levels"><span class="hint">读取结构后这里会出现每一层的快捷勾选。</span></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-hd"><span class="t"><i></i>已勾选</span>
+          <span><button class="mini ghost" onclick="calcStats()">计算大小</button>
+                <button class="mini ghost" onclick="clearSelection()">清空</button></span></div>
+        <div class="stat">
+          <span><b id="selCount">0</b> 个文件夹</span>
+          <span><b id="selFiles">—</b> 个文件</span>
+          <span><b id="selSize">—</b> 总大小</span>
+        </div>
+        <div id="selHint" class="hint" style="margin:0 0 5px"></div>
+        <div id="selList" class="hint">尚未勾选任何文件夹。</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-hd"><span class="t"><i></i>操作</span>
+          <span class="hint">只搬运勾选的文件夹本身</span></div>
+        <div class="row">
+          <span class="lbl">目标目录</span>
+          <input type="text" id="destPath" class="grow" placeholder="/vol1/1000/media">
+          <button class="mini" onclick="openPicker('dest')">浏览…</button>
+          <button class="mini" onclick="mkDest()">新建</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label class="chk"><input type="radio" name="op" value="move" checked> 移动</label>
+          <label class="chk"><input type="radio" name="op" value="copy"> 复制</label>
+          <span class="hint">重名</span>
+          <select id="conflict">
+            <option value="rename" selected>自动改名</option>
+            <option value="skip">跳过</option>
+            <option value="overwrite">覆盖</option>
+          </select>
+          <label class="chk"><input type="checkbox" id="keepStructure"> 保留层级</label>
+        </div>
+        <div class="row" style="margin-top:7px">
+          <button class="primary" onclick="runJob('move')">移动到目标目录</button>
+          <button onclick="runJob('copy')">复制</button>
+          <button onclick="runJob('plan')">先预演</button>
+        </div>
+        <div class="row" style="margin-top:5px">
+          <span class="hint">导出清单</span>
+          <button class="mini" onclick="doExport('txt')">txt</button>
+          <button class="mini" onclick="doExport('csv')">csv</button>
+          <button class="mini" onclick="doExport('json')">json</button>
+          <button class="mini" onclick="doExport('sh')">sh</button>
+        </div>
+        <div id="jobBox" style="display:none;margin-top:8px">
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" id="jobText">准备中…</span>
+            <button class="mini" onclick="cancelJob()">取消</button>
+          </div>
+          <div class="bar" style="margin-top:5px"><i id="jobBar"></i></div>
+        </div>
+        <div id="jobLog" class="hint" style="margin:5px 0 2px"></div>
+      </div>
+    </aside>
+
+    <section class="card treecard">
+      <h2 style="margin-bottom:8px"><span class="t"><i></i>目录结构</span>
+          <span class="hint" id="treeStat">—</span></h2>
+      <div id="tree" class="hint">请先选择来源目录并点击「读取结构」。</div>
+    </section>
+  </div>
+
+  <!-- 一行页脚：左边说明"会记住"，右边是网关/版本标记（原来挂在页头上） -->
+  <div class="foot">
+    <span class="hint" id="rememberHint">筛选条件与来源目录会自动记住，下次打开接着用</span>
+    <span class="badges">
+      <span class="badge on" id="aggBadge" style="display:none"></span>
+      <span class="badge" id="modeBadge">加载中…</span>
+      <span class="badge" id="verBadge"></span>
+    </span>
+  </div>
+</div>
+
+<div class="modal" id="picker">
+  <div class="box">
+    <div class="hd"><b>选择目录</b><button class="mini ghost" onclick="closePicker()">关闭</button></div>
+    <div class="bd">
+      <div id="pkRecent"></div>
+      <div class="crumb" id="pkCrumb"></div>
+      <div class="row" style="margin-bottom:8px">
+        <input type="text" id="pkPath" class="grow">
+        <button class="mini" onclick="pkGo(document.getElementById('pkPath').value)">跳转</button>
+        <button class="mini" onclick="pkUp()">上一级</button>
+        <button class="mini" onclick="pkGo('')">全部存储空间</button>
+        <button class="mini" onclick="pkGo('/')">按存储空间</button>
+      </div>
+      <div id="pkList" class="hint" style="max-height:46vh;overflow:auto;border:1px solid var(--fn-line-2);border-radius:10px;padding:6px">加载中…</div>
+    </div>
+    <div class="ft">
+      <span class="hint" id="pkPicked" style="margin-right:auto"></span>
+      <button onclick="closePicker()">取消</button>
+      <button class="primary" onclick="pkConfirm()">选用当前目录</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="confirmBox">
+  <div class="box" style="max-width:560px">
+    <div class="hd"><b id="cfTitle">确认</b></div>
+    <div class="bd" id="cfBody" style="line-height:1.8;word-break:break-all"></div>
+    <div class="ft">
+      <button onclick="cfAnswer(false)" style="margin-right:auto">取消</button>
+      <button class="primary" onclick="cfAnswer(true)">确认执行</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ---------- 基础 ---------- */
+/* 接口根地址。
+   飞牛统一网关下地址形如 /app/folder-picker —— 注意它**没有结尾斜杠**。
+   旧写法"砍掉最后一个路径段"会把它算成 /app/，于是所有请求打到 /app/api/... ，
+   而网关只转发 /app/folder-picker/** ，结果就是满屏 HTTP 404。
+   所以这里不再猜：先同步给一个最可能的候选（让 BASE 在同步代码里也可读），
+   再由 detectBase() 用一次 /api/info 请求实测确认。 */
+const BASE_GUESS = (() => {
+  const p = location.pathname;
+  const m = p.match(/^\/app\/[A-Za-z0-9_.\-]+/);   // 统一网关：/app/<appname>
+  if (m) return m[0] + '/';
+  return p.endsWith('/') ? p : p.replace(/[^/]*$/, '');
+})();
+let BASE = BASE_GUESS;
+
+/* 候选地址：当前地址本身当目录 → 逐级上溯。
+   网关是否保留前缀、挂在哪一层、带不带结尾斜杠，都不影响最终能试对。 */
+function baseCandidates() {
+  const p = location.pathname;
+  const out = [];
+  const push = (v) => { if (v && out.indexOf(v) === -1) out.push(v); };
+  push(p.endsWith('/') ? p : p + '/');
+  push(BASE_GUESS);
+  const seg = p.replace(/\/+$/, '').split('/');
+  while (seg.length > 1) {
+    seg.pop();
+    push((seg.join('/') || '') + '/');
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/* 只有真的返回 folder-picker 的 /api/info 才算命中，
+   避免误把别的服务（或网关自己的 /api/）当成我们的接口。 */
+async function probeBase(base) {
+  try {
+    const res = await fetch(base + 'api/info', { headers: { 'X-FP-Probe': '1' } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return (d && d.ok === true && d.app === 'folder-picker') ? d : null;
+  } catch (e) { return null; }
+}
+
+let baseReady = null;
+let baseInfo = null;
+async function detectBase() {
+  for (const b of baseCandidates()) {
+    const info = await probeBase(b);
+    if (info) { baseInfo = info; return b; }
+  }
+  return '';
+}
+function ensureBase() {
+  if (!baseReady) baseReady = detectBase();
+  return baseReady;
+}
+let baseError = '';
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast on' + (isErr ? ' err' : '');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.className = 'toast'; }, 3200);
+}
+/* 自己画确认框。iframe 里浏览器原生 confirm 常被静默拦截
+   （sandbox 未给 allow-modals），点了会直接返回 false，
+   表现就是「移动」按钮点了没反应。 */
+let cfResolve = null;
+function askConfirm(title, lines) {
+  $('cfTitle').textContent = title;
+  $('cfBody').innerHTML = lines.map(l => l.slice(0, 2) === '!!'
+    ? '<span class="err">' + esc(l.slice(2)) + '</span>'
+    : esc(l)).join('<br>');
+  $('confirmBox').classList.add('on');
+  return new Promise(res => { cfResolve = res; });
+}
+function cfAnswer(v) {
+  $('confirmBox').classList.remove('on');
+  const r = cfResolve;
+  cfResolve = null;
+  if (r) r(v);
+}
+
+/* 顶部筛选条件默认收起，只留一行，界面清爽；用户点了才展开。
+   收起状态下如果确实设了条件，按钮上带出条数，免得"以为没筛选"。 */
+function syncAdvBtn() {
+  const open = $('advRow').classList.contains('on');
+  const n = ['filterText', 'excludeText'].filter(id => $(id).value.trim()).length
+    + ($('showFiles').checked ? 1 : 0)
+    + ($('showEmpty').checked ? 1 : 0)
+    + ($('hideHidden').checked ? 0 : 1);
+  const btn = $('advBtn');
+  btn.textContent = open ? '筛选条件 ▴'
+    : (n ? '筛选条件 ' + n + ' 项 ▾' : '筛选条件 ▾');
+  btn.classList.toggle('on', open || n > 0);
+}
+function toggleAdv(force) {
+  const row = $('advRow');
+  const on = force === undefined ? !row.classList.contains('on') : !!force;
+  row.classList.toggle('on', on);
+  syncAdvBtn();
+  if (force === undefined) savePrefsSoon();   // 展开/收起状态也记住
+}
+
+function fmtBytes(n) {
+  if (n === null || n === undefined || n === '') return '—';
+  const u = ['B','KB','MB','GB','TB']; let v = Number(n), i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (i === 0 ? v.toFixed(0) : v.toFixed(v < 10 ? 2 : 1)) + ' ' + u[i];
+}
+async function api(path, { method = 'GET', params = {}, body = null } = {}) {
+  const base = await ensureBase();
+  if (!base) {
+    baseError = baseError || ('连不上应用接口。已尝试：' + baseCandidates().join('  ') +
+      '\n请确认应用正在运行；若刚升级过，可在应用中心重启一次。');
+    throw new Error(baseError);
+  }
+  BASE = base;
+  let url = base + 'api/' + path;
+  // 注意：空字符串是合法取值（聚合层用它表示"全部存储空间"），不能被过滤掉
+  const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v));
+  if (qs.length) url += '?' + qs.join('&');
+  const opt = { method, headers: {} };
+  if (body !== null) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const res = await fetch(url, opt);
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* ignore */ }
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('请求失败 HTTP ' + res.status));
+  return data;
+}
+
+/* ---------- 状态 ---------- */
+const state = {
+  root: '', tree: null, nodes: new Map(), levelCount: new Map(),
+  selected: new Set(), expanded: new Set(), maxDepth: 0, jobId: '',
+  aggregate: true, aggCount: 0,
+  scrollTo: '',        // 从「已勾选」清单跳过来时要定位的节点
+  flashEl: null,
+  lastRoot: undefined, // 上次成功读取过的来源目录（'' = 聚合视图），用于下次自动填回
+  lastDest: undefined, // 上次真正用它搬过东西的目标目录
+};
+
+/* ---------- 记住上次的筛选条件与来源目录 ----------
+   存在浏览器本地（localStorage），所以「关掉再打开」条件还在。
+
+   注意：飞牛桌面是用 iframe 内嵌本页面的，iframe 可能被沙箱限制，
+   这时候连读 localStorage 都会直接抛 SecurityError。所以下面每一次
+   读写都单独兜住异常——拿不到就退化成「这次不记忆」，绝不能让整页打不开。 */
+const PREF_KEY = 'folder-picker.prefs.v1';
+const HIST_KEY = 'folder-picker.roots.v1';
+const HIST_MAX = 8;
+const PREF_TEXTS = ['filterText', 'excludeText', 'depth'];
+const PREF_CHECKS = ['showFiles', 'showEmpty', 'hideHidden'];
+
+function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* 被沙箱禁掉就算了 */ } }
+/* 真的试一下写：有些窗口是"能读不能写"，只看读会误判成可用 */
+function storageOK() {
+  try {
+    window.localStorage.setItem(PREF_KEY + '.ping', '1');
+    window.localStorage.removeItem(PREF_KEY + '.ping');
+    return true;
+  } catch (e) { return false; }
+}
+function readJSON(k, dft) {
+  const raw = lsGet(k);
+  if (!raw) return dft;
+  try {
+    const v = JSON.parse(raw);
+    return (v && typeof v === 'object') ? v : dft;
+  } catch (e) { return dft; }
+}
+function writeJSON(k, v) {
+  try { lsSet(k, JSON.stringify(v)); } catch (e) { /* 同上 */ }
+}
+
+function rootHist() {
+  const v = readJSON(HIST_KEY, []);
+  return Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()) : [];
+}
+
+function savePrefs() {
+  clearTimeout(prefTimer);
+  const p = { adv: $('advRow').classList.contains('on') };
+  PREF_TEXTS.forEach(id => { p[id] = $(id).value; });
+  PREF_CHECKS.forEach(id => { p[id] = $(id).checked; });
+  if (state.lastRoot !== undefined) p.lastRoot = state.lastRoot;
+  if (state.lastDest !== undefined) p.lastDest = state.lastDest;
+  writeJSON(PREF_KEY, p);
+}
+let prefTimer = 0;
+function savePrefsSoon() {
+  clearTimeout(prefTimer);
+  prefTimer = setTimeout(savePrefs, 350);
+}
+
+/* 来源目录历史：最近用的排最前，最多留 8 条，重复的不再记第二遍 */
+function rememberRoot(p) {
+  p = (p || '').trim().replace(/\/+$/, '');
+  if (!p) return;
+  const list = [p].concat(rootHist().filter(x => x.replace(/\/+$/, '') !== p));
+  writeJSON(HIST_KEY, list.slice(0, HIST_MAX));
+  renderRootHist();
+}
+function rememberDest(p) {
+  p = (p || '').trim();
+  if (!p) return;
+  state.lastDest = p;
+  savePrefs();
+}
+function renderRootHist() {
+  const list = rootHist();
+  const dl = $('rootHist');
+  if (dl) dl.innerHTML = list.map(p => '<option value="' + esc(p) + '"></option>').join('');
+  const box = $('pkRecent');
+  if (!box) return;
+  // 「最近用过」只在选来源目录时出现（选目标目录时用不上）
+  const show = pkTarget === 'root' ? list : [];
+  box.style.display = show.length ? 'flex' : 'none';
+  box.innerHTML = show.length
+    ? '<span class="hint">最近用过：</span>' + show.map(p =>
+        '<span class="chip" data-p="' + esc(p) + '" title="' + esc(p) + '">' +
+        esc(p.split('/').filter(Boolean).pop() || p) + '</span>').join('')
+    : '';
+  box.querySelectorAll('[data-p]').forEach(el => {
+    el.onclick = () => pkGo(el.getAttribute('data-p'));
+  });
+}
+
+/* 打开页面时把上次的条件和目录装回去。
+   后端下发的默认值只作为「这台机器上从没用过」时的兜底，用户自己上次用的优先。 */
+function applyPrefs() {
+  const p = readJSON(PREF_KEY, null);
+  if (p) {
+    PREF_TEXTS.forEach(id => { if (typeof p[id] === 'string') $(id).value = p[id]; });
+    PREF_CHECKS.forEach(id => { if (typeof p[id] === 'boolean') $(id).checked = p[id]; });
+    if (p.adv) toggleAdv(true);
+    if (typeof p.lastRoot === 'string') {
+      state.lastRoot = p.lastRoot;
+      $('rootPath').value = p.lastRoot;
+    }
+    if (typeof p.lastDest === 'string') {
+      state.lastDest = p.lastDest;
+      $('destPath').value = p.lastDest;
+    }
+  }
+  renderRootHist();
+  syncAdvBtn();
+  // 记不住就直说，别让页脚那句"会自动记住"变成假话
+  const hint = $('rememberHint');
+  if (hint) {
+    const ok = storageOK();
+    hint.textContent = ok
+      ? '筛选条件与来源目录会自动记住，下次打开接着用'
+      : '这个窗口禁用了本地存储，本次改的条件不会被记住';
+    hint.className = ok ? 'hint' : 'hint warn';
+  }
+}
+
+/* ---------- 初始化 ---------- */
+async function boot() {
+  try {
+    const info = baseInfo || await api('info');
+    $('modeBadge').textContent = info.mode === 'gateway' ? '统一网关' : 'TCP 直连';
+    $('verBadge').textContent = 'v' + info.version;
+    // 层数默认值由后端给（当前是 3 层）
+    if (info.default_depth) $('depth').value = String(info.default_depth);
+    if (info.default_source) { $('rootPath').value = info.default_source; state.root = info.default_source; }
+    if (info.default_dest) $('destPath').value = info.default_dest;
+    state.aggregate = !!info.aggregate;
+    state.aggCount = (info.agg_dirs || []).length;
+    if (state.aggregate) {
+      $('aggBadge').style.display = '';
+      $('aggBadge').textContent = '已聚合 ' + state.aggCount + ' 个存储空间';
+      $('aggBadge').title = (info.agg_dirs || [])
+        .map(d => d.volume + ' → ' + d.path).join('\n');
+      $('rootPath').placeholder = '留空即聚合全部存储空间（' +
+        (info.aggregate_subdirs || []).map(s => '/vol*/' + s).join(' / ') + '）；也可填具体目录';
+    }
+    if (info.mode !== 'gateway' && info.user && !info.user.username) {
+      $('modeBadge').title = '当前未经飞牛统一网关登录态校验';
+    }
+    applyPrefs();          // 上次用过的筛选条件 / 来源目录优先于上面的默认值
+    loadTree();
+  } catch (e) {
+    applyPrefs();          // 接口连不上时，至少把上次用的条件/目录填回来
+    $('modeBadge').textContent = '未连接';
+    $('modeBadge').title = e.message;
+    $('tree').innerHTML = '<span class="err">' + esc(e.message) + '</span>' +
+      '<div class="hint">页面地址：' + esc(location.href) + '</div>' +
+      '<div class="hint">接口根地址试过：' + esc(baseCandidates().join('  ')) + '</div>';
+    toast(e.message, true);
+  }
+}
+
+/* ---------- 目录树 ---------- */
+// 连续改筛选条件时，只让最后一次请求的结果生效，否则慢请求会盖掉新结果
+let treeSeq = 0;
+let loadTimer = 0;
+function scheduleLoad(delay) {
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => { loadTree(); }, delay === undefined ? 160 : delay);
+}
+
+async function loadTree() {
+  // 来源目录允许留空：空 = 聚合各存储空间下的文件夹（不必先点存储空间）
+  const path = $('rootPath').value.trim();
+  syncAdvBtn();
+  const seq = ++treeSeq;
+  $('tree').innerHTML = '<span class="hint">读取中…</span>';
+  try {
+    const data = await api('tree', { params: {
+      path, depth: $('depth').value,
+      filter: $('filterText').value, exclude: $('excludeText').value,
+      hide_hidden: $('hideHidden').checked ? 1 : 0,
+      show_empty: $('showEmpty').checked ? 1 : 0,
+      show_files: $('showFiles').checked ? 1 : 0,
+    }});
+    if (seq !== treeSeq) return;            // 中途又发起了新请求，这次结果作废
+    state.root = path;
+    // 只有真的读成功才记：手抖打错的路径不该下次还弹回来
+    state.lastRoot = path;
+    savePrefs();
+    rememberRoot(path);
+    state.aggregate = !!data.aggregate;
+    state.tree = data.tree;
+    const before = state.expanded;
+    state.nodes = new Map();
+    state.levelCount = new Map();
+    state.maxDepth = 0;
+    indexTree(state.tree, 0, null);
+    // 换筛选条件重新读取时，尽量保留原来的展开状态，
+    // 否则刚展开好的树会因为一次刷新整体收起，很难用。
+    const keep = new Set();
+    before.forEach((p) => { if (state.nodes.has(p)) keep.add(p); });
+    keep.add(state.tree.path);
+    state.expanded = keep;
+    renderTree();
+    renderLevels();
+    renderSelection();
+  } catch (e) {
+    if (seq !== treeSeq) return;
+    $('tree').innerHTML = '<span class="err">' + esc(e.message) + '</span>';
+    toast(e.message, true);
+  }
+}
+function indexTree(node, depth, parent) {
+  node.depth = depth;
+  node.parent = parent;
+  state.nodes.set(node.path, node);
+  state.maxDepth = Math.max(state.maxDepth, depth);
+  const c = (state.levelCount.get(depth) || 0);
+  if (depth > 0) state.levelCount.set(depth, c + 1);
+  (node.children || []).forEach(ch => indexTree(ch, depth + 1, node.path));
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function impliedSelected(path) {
+  let p = path;
+  while (p) {
+    const node = state.nodes.get(p);
+    if (!node) break;
+    if (node.parent && state.selected.has(node.parent)) return true;
+    p = node.parent;
+  }
+  return false;
+}
+function isChecked(path) { return state.selected.has(path) || impliedSelected(path); }
+
+function renderTree() {
+  const box = $('tree');
+  const keepTop = box.scrollTop;            // 勾选后整棵树会重建，滚动位置要还原回去
+  box.className = '';
+  if (!state.tree) { box.innerHTML = '<span class="hint">请先读取结构。</span>'; return; }
+  box.innerHTML = '';
+  state.flashEl = null;
+  box.appendChild(renderNode(state.tree));
+  const total = state.nodes.size - 1;      // 不含第 0 层的聚合根/来源目录本身
+  $('treeStat').className = 'hint';
+  // 聚合模式下第 1 层就是各存储空间里的文件夹，用户看到的"第 N 层"与实际一致
+  $('treeStat').textContent = (state.aggregate
+      ? '聚合 ' + state.aggCount + ' 个存储空间，' : '')
+    + '共 ' + total + ' 个文件夹，最深 ' + state.maxDepth + ' 层';
+  if (state.tree.truncated) {
+    $('treeStat').className = 'hint err';
+    $('treeStat').textContent += '（已达上限，结果被截断，请缩小范围或加筛选条件）';
+  }
+  if (state.flashEl) {
+    try { state.flashEl.scrollIntoView({ block: 'center' }); } catch (e) { /* jsdom 里没有 */ }
+    state.scrollTo = '';
+  } else {
+    box.scrollTop = keepTop;
+  }
+}
+function renderNode(node) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  const isVirtual = !!node.virtual_root;      // 聚合根：本身不是可搬运的目录
+  row.className = 'node' + (isVirtual ? ' root' : '');
+  const hasKids = (node.children || []).length > 0 || (node.files || []).length > 0 ||
+      node.truncated || node.files_truncated;
+  const expanded = state.expanded.has(node.path);
+
+  const tw = document.createElement('span');
+  tw.className = 'tw' + (hasKids ? '' : ' leaf');
+  tw.textContent = hasKids ? (expanded ? '▾' : '▸') : '•';
+  tw.onclick = () => { expanded ? state.expanded.delete(node.path) : state.expanded.add(node.path); renderTree(); };
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  const implied = impliedSelected(node.path);
+  cb.checked = isChecked(node.path);
+  if (implied) { cb.disabled = true; cb.title = '已被上级文件夹选中'; }
+  else if (node.depth === 0 || isVirtual) {
+    cb.disabled = true;
+    cb.title = isVirtual ? '这是聚合视图，本身不是可搬运的目录' : '这是当前根目录，不作为可搬运项';
+  }
+  cb.onchange = () => toggleNode(node.path, cb.checked);
+
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = node.name;
+  nm.title = node.path;
+  nm.onclick = () => { expanded ? state.expanded.delete(node.path) : state.expanded.add(node.path); renderTree(); };
+
+  const kids = (node.children || []).length;
+  const meta = document.createElement('span');
+  meta.className = 'meta';
+  if (isVirtual) {
+    meta.textContent = '聚合根 · ' + kids + ' 个文件夹';
+  } else {
+    meta.textContent = '第 ' + node.depth + ' 层' + (kids ? ' · ' + kids + ' 个子文件夹' : '');
+  }
+
+  row.appendChild(tw); row.appendChild(cb); row.appendChild(nm);
+  if (!isVirtual && node.volume) {
+    const vol = document.createElement('span');
+    vol.className = 'pill vol';
+    vol.textContent = node.volume;
+    vol.title = '来自存储空间 ' + node.volume + (node.volume_path ? '（' + node.volume_path + '）' : '');
+    row.appendChild(vol);
+  }
+  if (!isVirtual && (node.name_dup || 1) > 1) {
+    const dup = document.createElement('span');
+    dup.className = 'pill warn';
+    dup.textContent = '同名 ' + node.name_dup + ' 处';
+    dup.title = '不同存储空间里有同名文件夹，各自是独立目录；勾选只会搬这一个';
+    row.appendChild(dup);
+  }
+  row.appendChild(meta);
+
+  if (isChecked(node.path) && !isVirtual) row.classList.add('sel');
+  if (implied) row.classList.add('implied');
+  if (state.scrollTo && node.path === state.scrollTo) {
+    row.classList.add('flash');
+    state.flashEl = row;
+  }
+  wrap.appendChild(row);
+
+  const fileRows = (node.files || []).map(f => renderFileRow(f));
+
+  // 目标节点在很深的地方时，顺便把它的祖先都展开，滚动过去才看得见
+  const mustOpen = state.scrollTo && !expanded &&
+      (node.path === state.scrollTo || state.scrollTo.indexOf(node.path + '/') === 0);
+  if ((hasKids || fileRows.length) && (expanded || mustOpen)) {
+    const kidsBox = document.createElement('div');
+    kidsBox.className = 'children';
+    fileRows.forEach(r => kidsBox.appendChild(r));
+    (node.children || []).forEach(ch => kidsBox.appendChild(renderNode(ch)));
+    if (node.files_truncated) {
+      const tf = document.createElement('div');
+      tf.className = 'hint'; tf.textContent = '… 该层文件过多，仅列出前 ' + fileRows.length + ' 个';
+      kidsBox.appendChild(tf);
+    }
+    if (node.truncated) {
+      const t = document.createElement('div');
+      t.className = 'hint err'; t.textContent = '… 该层节点过多，已截断';
+      kidsBox.appendChild(t);
+    }
+    wrap.appendChild(kidsBox);
+  }
+  return wrap;
+}
+
+/* 文件行：只是"看得见"，不可勾选、不参与按层全选 */
+function renderFileRow(f) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'node file';
+
+  const tw = document.createElement('span');
+  tw.className = 'tw leaf';
+  tw.textContent = '•';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.disabled = true;
+  cb.title = '文件不能单独勾选——请勾选它所在的文件夹';
+
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = f.name;
+  nm.title = f.path;
+  nm.style.color = 'var(--fn-muted)';
+
+  const meta = document.createElement('span');
+  meta.className = 'meta';
+  meta.textContent = fmtBytes(f.size) + (f.is_video ? ' · 视频' : '');
+
+  row.appendChild(tw); row.appendChild(cb); row.appendChild(nm); row.appendChild(meta);
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function toggleNode(path, checked) {
+  if (checked) state.selected.add(path);
+  else state.selected.delete(path);
+  renderTree(); renderSelection();
+}
+function clearSelection() { state.selected.clear(); renderTree(); renderSelection(); }
+
+/* 点「已勾选」清单里的某一项 → 在右边的树里定位到它。
+   文件夹一多，这个跳转能省掉大量来回滚动。 */
+function focusInTree(path) {
+  const node = state.nodes.get(path);
+  if (!node) { toast('这个路径不在当前结果里，可能已被移动或改名', true); return; }
+  let p = node.parent;
+  while (p) {
+    state.expanded.add(p);
+    const par = state.nodes.get(p);
+    p = par ? par.parent : null;
+  }
+  state.expanded.add(path);
+  state.scrollTo = path;
+  renderTree();
+  toast('已在目录结构里定位：' + node.name);
+}
+
+/* ---------- 按层勾选 ---------- */
+function renderLevels() {
+  const box = $('levels');
+  box.innerHTML = '';
+  if (!state.nodes.size) { box.innerHTML = '<span class="hint">读取结构后这里会出现每一层的快捷勾选。</span>'; return; }
+  const counts = new Map();
+  state.nodes.forEach((n) => { if (n.depth > 0) counts.set(n.depth, (counts.get(n.depth) || 0) + 1); });
+  const depths = [...counts.keys()].sort((a, b) => a - b);
+  depths.forEach((d) => {
+    const el = document.createElement('div');
+    el.className = 'lv';
+    el.innerHTML = '<b>第 ' + d + ' 层</b><i class="n">' + counts.get(d) + ' 个</i>';
+    const btns = document.createElement('span');
+    btns.className = 'lvb';
+    const on = document.createElement('button');
+    on.className = 'mini primary'; on.textContent = '全选';
+    on.title = '勾选第 ' + d + ' 层的全部文件夹';
+    on.onclick = () => levelSelect(d, true);
+    const off = document.createElement('button');
+    off.className = 'mini'; off.textContent = '取消';
+    off.title = '取消第 ' + d + ' 层已勾选的文件夹';
+    off.onclick = () => levelSelect(d, false);
+    btns.appendChild(on); btns.appendChild(off);
+    el.appendChild(btns);
+    box.appendChild(el);
+  });
+  const all = document.createElement('div');
+  all.className = 'lv all';
+  const cnt = state.nodes.size - 1;         // 不含第 0 层
+  all.innerHTML = '<b>全部层</b><i class="n">共 ' + cnt + ' 个</i>';
+  const btns = document.createElement('span');
+  btns.className = 'lvb';
+  const b1 = document.createElement('button'); b1.className = 'mini primary'; b1.textContent = '全选';
+  b1.title = '勾选所有层级的文件夹';
+  b1.onclick = () => levelSelect(0, true);
+  const b2 = document.createElement('button'); b2.className = 'mini'; b2.textContent = '反选';
+  b2.title = '把已勾选的与未勾选的互换';
+  b2.onclick = invertSelection;
+  btns.appendChild(b1); btns.appendChild(b2);
+  all.appendChild(btns);
+  box.appendChild(all);
+}
+function levelSelect(depth, on) {
+  state.nodes.forEach((n) => {
+    if (depth > 0 && n.depth !== depth) return;
+    if (depth === 0 && n.depth === 0) return;
+    if (on) {
+      if (impliedSelected(n.path)) return;      // 已被上级选中，跳过以免重复
+      state.selected.add(n.path);
+    } else if (depth === 0 || n.depth === depth) {
+      state.selected.delete(n.path);
+    }
+  });
+  renderTree(); renderSelection();
+  toast((depth === 0 ? '全部层' : '第 ' + depth + ' 层') + (on ? ' 已全选' : ' 已取消'));
+}
+function invertSelection() {
+  const next = new Set();
+  state.nodes.forEach((n) => {
+    if (n.depth === 0) return;
+    if (!state.selected.has(n.path)) next.add(n.path);
+  });
+  state.selected = next;
+  renderTree(); renderSelection();
+}
+function expandAll(open) {
+  if (!state.nodes.size) return;
+  state.expanded = new Set();
+  if (open) state.nodes.forEach((n) => state.expanded.add(n.path));
+  else if (state.tree) state.expanded.add(state.tree.path);
+  renderTree();
+}
+
+/* ---------- 选中清单 ---------- */
+function selectedList() {
+  const arr = [];
+  state.nodes.forEach((n) => { if (n.depth > 0 && state.selected.has(n.path)) arr.push(n); });
+  state.selected.forEach((p) => { if (!state.nodes.has(p)) arr.push({ name: p.split('/').pop() || p, path: p, depth: -1, stale: true }); });
+  return arr.sort((a, b) => a.path.localeCompare(b.path, 'zh'));
+}
+function renderSelection() {
+  const arr = selectedList();
+  $('selCount').textContent = arr.length;
+  const box = $('selList');
+  if (!arr.length) {
+    box.innerHTML = '尚未勾选任何文件夹。';
+    $('selFiles').textContent = '—'; $('selSize').textContent = '—';
+    $('selHint').textContent = '';
+    return;
+  }
+  box.innerHTML = arr.map(n =>
+    '<div title="' + esc(n.path) + (n.stale ? '' : '（点击可在目录结构里定位）') + '"' +
+    (n.stale ? '' : ' data-p="' + esc(n.path) + '"') + '>' +
+    (n.stale ? '<span class="err">[已失效] </span>' : '') +
+    '第' + n.depth + '层 · ' + esc(n.name) + '</div>').join('');
+  box.querySelectorAll('[data-p]').forEach(el => {
+    el.onclick = () => focusInTree(el.getAttribute('data-p'));
+  });
+  const stale = arr.filter(n => n.stale).length;
+  $('selHint').innerHTML = stale
+    ? '<span class="err">有 ' + stale + ' 个路径已不存在（可能被移动或改名），执行前请先重新读取结构。</span>'
+    : '只搬这些文件夹本身，里面的内容会跟着一起走；点条目可定位。';
+}
+
+async function calcStats() {
+  const arr = selectedList().filter(n => !n.stale);
+  if (!arr.length) { toast('请先勾选文件夹', true); return; }
+  toast('正在统计…');
+  try {
+    const d = await api('stats', { method: 'POST', body: { paths: arr.map(n => n.path) } });
+    $('selFiles').textContent = d.stats.files.toLocaleString();
+    $('selSize').textContent = fmtBytes(d.stats.bytes) + (d.stats.partial ? '+' : '');
+    $('selHint').innerHTML = '含 ' + d.stats.dirs.toLocaleString() + ' 个子文件夹，' +
+        d.stats.videos.toLocaleString() + ' 个视频文件' + (d.stats.partial ? '（数量过大，结果不完整）' : '');
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------- 执行 ---------- */
+function currentOp() {
+  const el = document.querySelector('input[name=op]:checked');
+  return el ? el.value : 'move';
+}
+async function runJob(kind) {
+  const arr = selectedList().filter(n => !n.stale);
+  if (!arr.length) { toast('请先勾选文件夹', true); return; }
+  const dest = $('destPath').value.trim();
+  if (!dest) { toast('请填写目标目录', true); return; }
+  // 预演也要带上"当前选的是移动还是复制"，服务端才知道预演的到底是哪种操作
+  const op = kind === 'plan' ? currentOp() : kind;
+  const conflict = $('conflict').value;
+  if (kind !== 'plan') {
+    // 覆盖策略会替换目标位置已有的同名目录，必须二次确认；移动也一样
+    const needConfirm = (op === 'move') || (conflict === 'overwrite');
+    if (needConfirm) {
+      const lines = [
+        '将把 ' + arr.length + ' 个文件夹' + (op === 'move' ? '移动到' : '复制到') + '：',
+        dest,
+        '',
+        '重名策略：' + $('conflict').selectedOptions[0].textContent,
+      ];
+      if (conflict === 'overwrite') {
+        lines.push('', '!!重名策略为「覆盖」：目标位置已有的同名目录会被替换掉。');
+      }
+      if (!await askConfirm(op === 'move' ? '确认移动' : '确认复制', lines)) return;
+    }
+  }
+  const body = {
+    sources: arr.map(n => n.path), dest, op,
+    root: state.root, keep_structure: $('keepStructure').checked,
+    conflict,
+  };
+  rememberDest(dest);      // 真要用它搬东西了，才把目标目录记下来
+  $('jobBox').style.display = 'block';
+  $('jobBar').style.width = '0%';
+  $('jobText').textContent = '准备中…';
+  $('jobLog').innerHTML = '';
+  try {
+    const d = await api(kind === 'plan' ? 'plan' : 'job', { method: 'POST', body });
+    if (kind === 'plan') { showPlan(d.job); return; }
+    state.jobId = d.id;
+    pollJob();
+  } catch (e) { $('jobText').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; toast(e.message, true); }
+}
+function showPlan(job) {
+  $('jobBox').style.display = 'none';
+  const items = job.items || [];
+  const html = items.map(it =>
+    '<div>' + (it.status === 'skipped' ? '<span class="err">跳过</span> ' : '→ ') +
+    esc(it.source) + (it.reason ? ' <span class="hint">(' + esc(it.reason) + ')</span>' : '') +
+    (it.target && it.target !== it.source ? '<br>&nbsp;&nbsp;&nbsp;→ ' + esc(it.target) : '') + '</div>'
+  ).join('');
+  $('jobLog').innerHTML = '<b>预演结果</b>（没有动任何文件）：' +
+    '<div style="margin-top:4px">' + (html || '<span class="hint">没有可执行项</span>') + '</div>';
+  toast('预演完成，共 ' + items.length + ' 项');
+}
+async function pollJob() {
+  try {
+    const d = await api('job', { params: { id: state.jobId } });
+    const j = d.job;
+    $('jobBar').style.width = j.percent + '%';
+    const cur = j.current ? ' · ' + j.current : '';
+    $('jobText').textContent = j.state + ' · ' + j.done_files + '/' + j.total_files +
+      ' 个文件 · ' + fmtBytes(j.done_bytes) + cur;
+    if (j.state === 'running' || j.state === 'pending') { setTimeout(pollJob, 700); return; }
+    if (j.state === 'done') $('jobText').innerHTML = '<span class="ok">' + esc(j.message) + '</span>';
+    else $('jobText').innerHTML = '<span class="err">' + esc(j.message || j.state) + '</span>';
+    const log = (j.items || []).slice(0, 40).map(it =>
+      (it.status === 'done' ? '✓ ' : it.status === 'skipped' ? '⊘ ' : '· ') + esc(it.source) +
+      (it.renamed ? ' <span class="hint">(重名已改名)</span>' : '')).join('<div></div>');
+    $('jobLog').innerHTML = log + ((j.errors && j.errors.length)
+      ? '<div class="err" style="margin-top:6px">错误 ' + j.errors.length + ' 条：' + esc(j.errors[0]) + '</div>' : '');
+    if (j.state === 'done') { toast('完成：' + j.message); loadTree(); }
+  } catch (e) { $('jobText').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }
+}
+async function cancelJob() {
+  if (!state.jobId) return;
+  try { await api('job/cancel', { method: 'POST', body: { id: state.jobId } }); toast('已请求取消'); }
+  catch (e) { toast(e.message, true); }
+}
+async function doExport(fmt) {
+  const arr = selectedList().filter(n => !n.stale);
+  if (!arr.length) { toast('请先勾选文件夹', true); return; }
+  try {
+    const d = await api('export', { method: 'POST', body: { paths: arr.map(n => n.path), format: fmt } });
+    const blob = new Blob([d.content], { type: (d.mime || 'text/plain') + ';charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = d.filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast('已导出 ' + d.filename);
+  } catch (e) { toast(e.message, true); }
+}
+async function mkDest() {
+  const p = $('destPath').value.trim();
+  if (!p) { toast('请先填写目标目录', true); return; }
+  try { await api('mkdir', { method: 'POST', body: { path: p } }); toast('已创建：' + p); }
+  catch (e) { toast(e.message, true); }
+}
+
+/* ---------- 目录选择器 ---------- */
+/* 浏览起点是「聚合层」：各存储空间用户目录（/volN/1000）下的文件夹并成一个列表。
+   用户不必先点存储空间、再点 1000 —— 上来就是他要挑的那些文件夹。
+   需要按盘逐级看时，点「按存储空间」切到存储空间列表。
+   注意起点不能是文件系统的 "/"：它不在白名单里，点进去只会报错。 */
+let pkTarget = 'root', pkCur = '', pkLevel = 'agg', pkAtRoot = false;
+
+function openPicker(target) {
+  pkTarget = target;
+  const cur = ($(target === 'root' ? 'rootPath' : 'destPath').value || '').trim();
+  $('picker').classList.add('on');
+  renderRootHist();     // 选来源目录时，顶上给出「最近用过」的那几个
+  if (!cur) { pkGo(''); return; }
+  // 手填/上次的路径读不了时，退回聚合层，别让用户卡在报错上
+  Promise.resolve(pkGo(cur)).then(ok => { if (!ok) pkGo(''); });
+}
+function closePicker() { $('picker').classList.remove('on'); }
+
+// 把 C:/a/b 和 /vol1/1000 都拆成正确的面包屑
+function pkCrumbs(p, rootLabel, rootPath) {
+  const m = p.match(/^([A-Za-z]:)?\/+/);
+  const prefix = m ? m[0].replace(/\/+$/, '') : '';
+  const parts = p.slice(m ? m[0].length : 0).split('/').filter(Boolean);
+  let acc = prefix;
+  return ['<a data-p="' + esc(rootPath) + '">' + esc(rootLabel) + '</a>'].concat(parts.map(x => {
+    acc += '/' + x;
+    return '<a data-p="' + esc(acc) + '">' + esc(x) + '</a>';
+  }));
+}
+
+async function pkGo(path) {
+  const box = $('pkList');
+  box.innerHTML = '<span class="hint">读取中…</span>';
+  try {
+    const d = await api('list', { params: { path: path === undefined || path === null ? '' : path,
+                                            show_files: 0, show_empty: 1 } });
+    pkCur = d.path || '';
+    pkAtRoot = !!d.at_root;
+    pkLevel = d.aggregate ? 'agg' : (d.virtual_root ? 'volumes' : 'dir');
+    $('pkPath').value = pkCur || '';
+    $('pkPicked').textContent = pkLevel === 'agg'
+      ? '当前：还没选目录 —— 点开一个文件夹，或点「按存储空间」逐级浏览'
+      : pkLevel === 'volumes'
+        ? '当前：还没选目录 —— 先点开一个存储空间'
+        : '当前：' + pkCur;
+
+    box.innerHTML = d.dirs.length
+      ? d.dirs.map(x => '<div class="node"><span class="tw">›</span><span class="nm" ' +
+          'style="cursor:pointer" data-p="' + esc(x.path) + '">' + esc(x.name) + '</span>' +
+          (x.volume ? '<span class="pill vol">' + esc(x.volume) + '</span>' : '') +
+          ((x.name_dup || 1) > 1 ? '<span class="pill warn">同名 ' + x.name_dup + ' 处</span>' : '') +
+          '<span class="meta">' + (x.child_dirs || 0) + ' 个子文件夹' +
+          (!x.volume && x.is_root && x.path ? ' · ' + esc(x.path) : '') + '</span></div>').join('')
+      : '<span class="hint">' + (pkLevel === 'agg'
+          ? '各存储空间的用户目录下都没有文件夹。点「按存储空间」可逐级浏览，或在应用设置里补 EXTRA_ROOTS。'
+          : pkLevel === 'volumes'
+            ? '没有可访问的存储空间。请确认 NAS 上已经建好存储空间；如需访问其它目录，可在应用设置里补 EXTRA_ROOTS。'
+            : '这个目录下没有子文件夹，可以直接点「选用当前目录」') + '</span>';
+    box.querySelectorAll('[data-p]').forEach(el => {
+      el.onclick = () => pkGo(el.getAttribute('data-p'));
+    });
+
+    if (pkLevel === 'agg') {
+      $('pkCrumb').innerHTML = '<span>全部存储空间</span>';
+    } else if (pkLevel === 'volumes') {
+      $('pkCrumb').innerHTML = '<a data-p="">全部存储空间</a> <span class="sep">/</span> <span>存储空间</span>';
+    } else {
+      $('pkCrumb').innerHTML = pkCrumbs(pkCur, '存储空间', '/').join(' <span class="sep">/</span> ');
+    }
+    $('pkCrumb').querySelectorAll('[data-p]').forEach(el => {
+      el.onclick = () => pkGo(el.getAttribute('data-p'));
+    });
+    return true;
+  } catch (e) {
+    pkCur = '';
+    box.innerHTML = '<span class="err">' + esc(e.message) + '</span>';
+    return false;
+  }
+}
+
+function pkUp() {
+  if (pkLevel !== 'dir') return;         // 已经在聚合层/存储空间列表
+  if (pkAtRoot) { pkGo('/'); return; }   // 存储空间根，再往上就是存储空间列表
+  const p = pkCur.replace(/\/+$/, '');
+  pkGo(p.split('/').slice(0, -1).join('/') || '/');
+}
+
+function pkConfirm() {
+  if (!pkCur) { toast('请先点开一个文件夹（或存储空间）进到要用的目录，再选用', true); return; }
+  $(pkTarget === 'root' ? 'rootPath' : 'destPath').value = pkCur;
+  closePicker();
+  if (pkTarget === 'root') loadTree();     // 读成功后才会记进「来源目录」历史
+  else rememberDest(pkCur);
+}
+
+/* ---------- 启动 ---------- */
+['filterText','excludeText'].forEach(id => {
+  $(id).addEventListener('keydown', e => { if (e.key === 'Enter') loadTree(); });
+  // 只输入、没点「应用筛选」时，也把"已设了几项条件"同步到按钮上
+  $(id).addEventListener('input', () => { syncAdvBtn(); savePrefsSoon(); });
+});
+$('rootPath').addEventListener('keydown', e => { if (e.key === 'Enter') loadTree(); });
+['showFiles','showEmpty','hideHidden','depth'].forEach(id => {
+  $(id).addEventListener('change', () => { syncAdvBtn(); savePrefsSoon(); scheduleLoad(); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('confirmBox').classList.contains('on')) { cfAnswer(false); return; }
+  closePicker();
+});
+boot();
+</script>
+</body>
+</html>

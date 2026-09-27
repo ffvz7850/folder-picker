@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "folder-picker.Application": {
+            "title": "文件夹挑选器（端口直连）",
+            "desc": "旧版 fnOS 兼容入口：直接通过端口访问，不含网关登录校验",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "port": "8484",
+            "url": "/",
+            "allUsers": false
+        }
+    }
+}

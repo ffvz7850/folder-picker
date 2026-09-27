@@ -1,0 +1,15 @@
+{
+    ".url": {
+        "folder-picker.Application": {
+            "title": "文件夹挑选器",
+            "desc": "树形展示各级子文件夹，勾选后移动或复制到目标目录",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "",
+            "gatewayPrefix": "/app/folder-picker",
+            "gatewaySocket": "app.sock",
+            "url": "/app/folder-picker",
+            "allUsers": false
+        }
+    }
+}
